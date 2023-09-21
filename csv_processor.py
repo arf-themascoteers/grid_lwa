@@ -64,14 +64,12 @@ class CSVProcessor:
         return ["lon", "lat", "when"]
 
     @classmethod
-    def gridify(cls, ag, grid, scene_fusion = False):
+    def gridify(cls, ag, grid):
         df = pd.read_csv(ag)
         columns = list(df.columns)
         columns = columns + CSVProcessor.get_neighbour_columns()
 
         dest = pd.DataFrame(columns=columns)
-
-
 
         for index, row in df.iterrows():
             neighbours = CSVProcessor.get_neighbours(df, row)
@@ -82,9 +80,9 @@ class CSVProcessor:
             for col in df.columns:
                 new_row[col] = row[col]
 
-            for i, neighbour in enumerate(neighbours):
+            for ind, (i, neighbour) in enumerate(neighbours.iterrows()):
                 for band in S2Bands.get_all_bands():
-                    new_row[f"{band}_{i}"] = neighbour[band]
+                    new_row[f"{band}_{ind}"] = neighbour[band]
             new_df = pd.DataFrame([new_row])
             dest = pd.concat((dest, new_df), axis=0)
 
@@ -115,7 +113,7 @@ class CSVProcessor:
                     filter = df[(df["row"] == target_row) & (df["column"] == target_col)]
                 if len(filter) == 0:
                     return None
-                filter = filter[0]
+                filter = filter.iloc[0:1]
                 if neighbours is None:
                     neighbours = filter
                 else:
