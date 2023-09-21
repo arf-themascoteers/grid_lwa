@@ -1,12 +1,18 @@
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
+from s2_bands import S2Bands
 
 
 class CSVProcessor:
     @staticmethod
     def get_neighbour_columns():
-        return ["nB01", "nB02", "nB03", "nB04", "nB05", "nB06", "nB07", "nB08", "nB8A", "nB09", "nB11", "nB12"]
+        base = S2Bands.get_all_bands()
+        cols = []
+        for i in range(8):
+            for b in base:
+                cols.append(f"{b}_{i}")
 
+        return cols
 
     @staticmethod
     def aggregate(complete, ag):
@@ -65,49 +71,54 @@ class CSVProcessor:
 
         dest = pd.DataFrame(columns=columns)
 
-        row_offset = [-1,0,1]
-        col_offset = [-1,0,1]
+
 
         for index, row in df.iterrows():
-            the_row = row["row"]
-            the_column = row["column"]
-            the_scene = None
-            if scene_fusion:
-                the_scene = row["scene"]
-
-            neighbours = None
-
-            for ro in row_offset:
-                for co in col_offset:
-                    if ro == 0 and co == 0:
-                        continue
-                    target_row = the_row + ro
-                    target_col = the_column + co
-                    if scene_fusion:
-                        filter = df[(df["row"] == target_row) & (df["column"] == target_col) & (df["scene"] == the_scene)]
-                    else:
-                        filter = df[(df["row"] == target_row) & (df["column"] == target_col)]
-                    if len(filter) == 0:
-                        continue
-
-                    if neighbours is None:
-                        neighbours = filter
-                    else:
-                        neighbours = pd.concat((neighbours,filter), axis=0)
-
-            if neighbours is None:
+            neighbours = CSVProcessor.get_neighbours(df, row)
+            if neighbours is None or len(neighbours) != 8:
                 continue
 
             new_row = {}
-            for column in df.columns:
-                new_row[column] = row[column]
+            for col in df.columns:
+                new_row[col] = row[col]
 
-            for ncol in CSVProcessor.get_neighbour_columns():
-                band = ncol[1:]
-                new_row[ncol] = neighbours[band].mean()
-
-            df_dictionary = pd.DataFrame([new_row])
-            dest = pd.concat([dest, df_dictionary], ignore_index=True)
+            for i, neighbour in enumerate(neighbours):
+                for band in S2Bands.get_all_bands():
+                    new_row[f"{band}_{i}"] = neighbour[band]
+            new_df = pd.DataFrame([new_row])
+            dest = pd.concat((dest, new_df), axis=0)
 
         dest = dest.round(4)
         dest.to_csv(grid, index=False)
+
+    @staticmethod
+    def get_neighbours(df, row):
+        the_row = row["row"]
+        the_column = row["column"]
+        the_scene = None
+        scene_fusion = ("scene" in df.columns)
+        if scene_fusion:
+            the_scene = row["scene"]
+
+        neighbours = None
+        row_offset = [-1,0,1]
+        col_offset = [-1,0,1]
+        for ro in row_offset:
+            for co in col_offset:
+                if ro == 0 and co == 0:
+                    continue
+                target_row = the_row + ro
+                target_col = the_column + co
+                if scene_fusion:
+                    filter = df[(df["row"] == target_row) & (df["column"] == target_col) & (df["scene"] == the_scene)]
+                else:
+                    filter = df[(df["row"] == target_row) & (df["column"] == target_col)]
+                if len(filter) == 0:
+                    return None
+                filter = filter[0]
+                if neighbours is None:
+                    neighbours = filter
+                else:
+                    neighbours = pd.concat((neighbours, filter), axis=0)
+
+        return neighbours
